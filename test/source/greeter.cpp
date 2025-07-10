@@ -1,11 +1,11 @@
 #include <doctest/doctest.h>
-#include <greeter/greeter.h>
-#include <greeter/version.h>
+#include <mni/greeter.h>
+#include <mni/version.h>
 
 #include <string>
 
 TEST_CASE("Greeter") {
-  using namespace greeter;
+  using namespace mni::greeter;
 
   Greeter greeter("Tests");
 
