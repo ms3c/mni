@@ -38,7 +38,7 @@ auto main(int argc, char** argv) -> int {
   if (result["version"].as<bool>()) {
     std::cout << "Greeter, version " << GREETER_VERSION << std::endl;
     return 0;
-  } 
+  }
 
   auto langIt = languages.find(language);
   if (langIt == languages.end()) {
