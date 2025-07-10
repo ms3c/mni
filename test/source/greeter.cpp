@@ -5,7 +5,7 @@
 #include <string>
 
 TEST_CASE("Greeter") {
-  using namespace mni::greeter;
+  using namespace mni;
 
   Greeter greeter("Tests");
 
