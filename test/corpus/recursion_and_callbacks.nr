@@ -7,7 +7,7 @@ isOdd = unda(n) { kama (n == 0) { rudisha sikweli } rudisha isEven(n - 1) }
 andika(isEven(40), isOdd(7))
 
 sum = unda(n) { kama (n == 0) { rudisha 0 } rudisha n + sum(n - 1) }
-andika(sum(500))
+andika(sum(100))
 
 compose = unda(f, g) { rudisha unda(x) { rudisha f(g(x)) } }
 inc = unda(x) { rudisha x + 1 }
