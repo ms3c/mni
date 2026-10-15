@@ -3,42 +3,13 @@
 #include <cmath>
 #include <cstdint>
 
+#include "checked_arithmetic.h"
+
 namespace mni {
 
   namespace {
     // Integer results that would not fit in an int64 fall back to doubles.
     constexpr double kIntLimit = 9.2e18;
-
-    // True if the result does not fit in an int64 (out is only valid when this is false).
-    bool addOverflows(int64_t a, int64_t b, int64_t& out) {
-#if defined(__GNUC__) || defined(__clang__)
-      return __builtin_add_overflow(a, b, &out);
-#else
-      if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) return true;
-      out = a + b;
-      return false;
-#endif
-    }
-
-    bool subOverflows(int64_t a, int64_t b, int64_t& out) {
-#if defined(__GNUC__) || defined(__clang__)
-      return __builtin_sub_overflow(a, b, &out);
-#else
-      if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) return true;
-      out = a - b;
-      return false;
-#endif
-    }
-
-    bool mulOverflows(int64_t a, int64_t b, int64_t& out) {
-#if defined(__GNUC__) || defined(__clang__)
-      return __builtin_mul_overflow(a, b, &out);
-#else
-      if (std::fabs(static_cast<double>(a) * static_cast<double>(b)) >= kIntLimit) return true;
-      out = a * b;
-      return false;
-#endif
-    }
 
     Value intPow(int64_t base, int64_t exp) {
       if (exp < 0)

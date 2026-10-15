@@ -28,6 +28,9 @@ endif()
 
 file(GLOB sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp)
 add_executable(${PROJECT_NAME} ${sources})
+# the tests also exercise a few internal headers (source/checked_arithmetic.h)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../source)
+
 find_package(Threads REQUIRED)
 target_link_libraries(${PROJECT_NAME} doctest::doctest mni::mni Threads::Threads)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 20)
