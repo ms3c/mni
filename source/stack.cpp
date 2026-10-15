@@ -13,36 +13,58 @@
 namespace mni {
 
   namespace {
-    // Lowest address of the calling thread's stack, or 0 if unknown.
-    std::uintptr_t stackLow() {
+    struct StackBounds {
+      std::uintptr_t low = 0;  // 0 if unknown
+      std::uintptr_t high = 0;
+    };
+
+    StackBounds stackBounds() {
+      StackBounds bounds;
 #if defined(_WIN32)
       ULONG_PTR low = 0, high = 0;
       GetCurrentThreadStackLimits(&low, &high);
-      return static_cast<std::uintptr_t>(low);
+      bounds.low = static_cast<std::uintptr_t>(low);
+      bounds.high = static_cast<std::uintptr_t>(high);
 #elif defined(__APPLE__)
       const pthread_t self = pthread_self();
-      return reinterpret_cast<std::uintptr_t>(pthread_get_stackaddr_np(self))
-             - pthread_get_stacksize_np(self);
+      bounds.high = reinterpret_cast<std::uintptr_t>(pthread_get_stackaddr_np(self));
+      bounds.low = bounds.high - pthread_get_stacksize_np(self);
 #elif defined(__linux__)
       pthread_attr_t attr;
-      if (pthread_getattr_np(pthread_self(), &attr) != 0) return 0;
-      void* address = nullptr;
-      std::size_t size = 0;
-      const int status = pthread_attr_getstack(&attr, &address, &size);
-      pthread_attr_destroy(&attr);
-      return status == 0 ? reinterpret_cast<std::uintptr_t>(address) : 0;
+      if (pthread_getattr_np(pthread_self(), &attr) == 0) {
+        void* address = nullptr;
+        std::size_t size = 0;
+        if (pthread_attr_getstack(&attr, &address, &size) == 0) {
+          bounds.low = reinterpret_cast<std::uintptr_t>(address);
+          bounds.high = bounds.low + size;
+        }
+        pthread_attr_destroy(&attr);
+      }
+#endif
+      return bounds;
+    }
+
+    // An address inside the current stack frame. Sanitizers may move local variables to a separate
+    // "fake stack" on the heap, so the frame address is used where the compiler provides it.
+    std::uintptr_t currentStackAddress() {
+#if defined(__GNUC__) || defined(__clang__)
+      return reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
 #else
-      return 0;
+      char marker;
+      return reinterpret_cast<std::uintptr_t>(&marker);
 #endif
     }
   }  // namespace
 
   std::size_t stackBytesRemaining() {
-    thread_local const std::uintptr_t low = stackLow();
-    if (low == 0) return static_cast<std::size_t>(-1);
-    char marker;
-    const auto here = reinterpret_cast<std::uintptr_t>(&marker);
-    return here > low ? static_cast<std::size_t>(here - low) : 0;
+    constexpr auto kUnknown = static_cast<std::size_t>(-1);
+    thread_local const StackBounds bounds = stackBounds();
+    if (bounds.low == 0) return kUnknown;
+
+    const std::uintptr_t here = currentStackAddress();
+    // Not on this thread's own stack (custom stacks, fibers): we cannot tell, so do not block.
+    if (here < bounds.low || here >= bounds.high) return kUnknown;
+    return static_cast<std::size_t>(here - bounds.low);
   }
 
 }  // namespace mni

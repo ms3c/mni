@@ -5,6 +5,7 @@
 #include <mni/interpreter.h>
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace mni {
@@ -56,9 +57,11 @@ namespace mni::native {
     return v.toDouble();
   }
 
-  inline const std::string& stringArg(const std::string& name, const Value& v, int line) {
+  // `name` is a string_view so callers can pass a literal: with a `const std::string&` parameter
+  // the literal becomes a temporary and GCC warns that the returned reference might dangle.
+  inline const std::string& stringArg(std::string_view name, const Value& v, int line) {
     if (v.type() != Value::Type::String)
-      throw NuruError(line, "'" + name + "' inahitaji NENO, si " + v.typeName());
+      throw NuruError(line, "'" + std::string(name) + "' inahitaji NENO, si " + v.typeName());
     return v.asString();
   }
 

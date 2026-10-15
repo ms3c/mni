@@ -30,7 +30,7 @@ kwa i, jina ktk ["Juma", "Asha"] {
 
 You need CMake 3.24 or newer and a C++20 compiler. Dependencies are downloaded by CMake on first configure, so the first build needs network access: [fmt](https://github.com/fmtlib/fmt), [nlohmann/json](https://github.com/nlohmann/json), [cpr](https://github.com/libcpr/cpr) (HTTP) and, for the tests, [doctest](https://github.com/doctest/doctest).
 
-cpr uses the system libcurl on Linux and macOS (macOS ships it; on Debian and Ubuntu install `libcurl4-openssl-dev`) and builds curl itself on Windows.
+cpr uses the system libcurl on Linux and macOS (macOS ships it; on Debian and Ubuntu install `libcurl4-openssl-dev` and `libssl-dev`) and builds curl itself on Windows.
 
 ```sh
 cmake -Sstandalone -Bbuild/standalone -DCMAKE_BUILD_TYPE=Release

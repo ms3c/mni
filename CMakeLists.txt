@@ -83,40 +83,49 @@ target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>
 # Link dependencies
 target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt nlohmann_json::nlohmann_json)
 
-if(MNI_ENABLE_HTTP)
-  target_link_libraries(${PROJECT_NAME} PRIVATE $<BUILD_INTERFACE:cpr::cpr>)
-  # public so tests (and users) can tell whether mtandao is available
-  target_compile_definitions(${PROJECT_NAME} PUBLIC MNI_HAVE_HTTP=1)
-endif()
-
 target_include_directories(
   ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
                          $<INSTALL_INTERFACE:include/${PROJECT_NAME}-${PROJECT_VERSION}>
 )
 
-# The exported package cannot carry cpr/libcurl yet, so an installed libmni built with HTTP would
-# fail to link in consumers. Fail clearly at install time instead.
+# ---- Packaging ----
+
 if(MNI_ENABLE_HTTP)
+  # The exported package cannot carry cpr/libcurl yet, so an installed libmni built with HTTP would
+  # fail to link in consumers (and CMake refuses to export a target that depends on cpr). There is
+  # therefore no export set in this configuration: installing stops with a clear message, and the
+  # version header that packageProject would have made is generated here.
+  target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
+  # public so tests (and users) can tell whether mtandao is available
+  target_compile_definitions(${PROJECT_NAME} PUBLIC MNI_HAVE_HTTP=1)
+
+  # packageProject normally creates this alias
+  add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+
+  configure_file(cmake/version.h.in ${PROJECT_BINARY_DIR}/generated/mni/version.h @ONLY)
+  target_include_directories(
+    ${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/generated>
+  )
+
   install(
     CODE "message(FATAL_ERROR \"Installing mni with HTTP support is not supported yet. Configure with -DMNI_ENABLE_HTTP=OFF to install the library.\")"
   )
+else()
+  # this allows users to install and find the library via `find_package()`.
+
+  # the location where the project's version header will be placed should match the project's
+  # regular header paths
+  string(TOLOWER ${PROJECT_NAME}/version.h VERSION_HEADER_LOCATION)
+
+  packageProject(
+    NAME ${PROJECT_NAME}
+    VERSION ${PROJECT_VERSION}
+    NAMESPACE ${PROJECT_NAME}
+    BINARY_DIR ${PROJECT_BINARY_DIR}
+    INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include
+    INCLUDE_DESTINATION include/${PROJECT_NAME}-${PROJECT_VERSION}
+    VERSION_HEADER "${VERSION_HEADER_LOCATION}"
+    COMPATIBILITY SameMajorVersion
+    DEPENDENCIES "fmt 10.2.1" "nlohmann_json 3.12.0"
+  )
 endif()
-
-# ---- Create an installable target ----
-# this allows users to install and find the library via `find_package()`.
-
-# the location where the project's version header will be placed should match the project's regular
-# header paths
-string(TOLOWER ${PROJECT_NAME}/version.h VERSION_HEADER_LOCATION)
-
-packageProject(
-  NAME ${PROJECT_NAME}
-  VERSION ${PROJECT_VERSION}
-  NAMESPACE ${PROJECT_NAME}
-  BINARY_DIR ${PROJECT_BINARY_DIR}
-  INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include
-  INCLUDE_DESTINATION include/${PROJECT_NAME}-${PROJECT_VERSION}
-  VERSION_HEADER "${VERSION_HEADER_LOCATION}"
-  COMPATIBILITY SameMajorVersion
-  DEPENDENCIES "fmt 10.2.1" "nlohmann_json 3.12.0"
-)
