@@ -43,25 +43,21 @@ namespace mni {
 #endif
       return bounds;
     }
-
-    // An address inside the current stack frame. Sanitizers may move local variables to a separate
-    // "fake stack" on the heap, so the frame address is used where the compiler provides it.
-    std::uintptr_t currentStackAddress() {
-#if defined(__GNUC__) || defined(__clang__)
-      return reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
-#else
-      char marker;
-      return reinterpret_cast<std::uintptr_t>(&marker);
-#endif
-    }
   }  // namespace
 
+  // Sanitizers may move local variables to a separate "fake stack" on the heap, so where the
+  // compiler allows it the frame address is used to find our position on the real stack.
   std::size_t stackBytesRemaining() {
     constexpr auto kUnknown = static_cast<std::size_t>(-1);
     thread_local const StackBounds bounds = stackBounds();
     if (bounds.low == 0) return kUnknown;
 
-    const std::uintptr_t here = currentStackAddress();
+#if defined(__GNUC__) || defined(__clang__)
+    const auto here = reinterpret_cast<std::uintptr_t>(__builtin_frame_address(0));
+#else
+    char marker;
+    const auto here = reinterpret_cast<std::uintptr_t>(&marker);
+#endif
     // Not on this thread's own stack (custom stacks, fibers): we cannot tell, so do not block.
     if (here < bounds.low || here >= bounds.high) return kUnknown;
     return static_cast<std::size_t>(here - bounds.low);
