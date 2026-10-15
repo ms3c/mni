@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mni/symbol.h>
 #include <mni/token.h>
 
 #include <cstdint>
@@ -86,6 +87,7 @@ namespace mni {
   struct LetStatement : Statement {
     MNI_NODE(LetStatement, Let, Statement)
     std::string name;
+    Symbol symbol = 0;
     ExprPtr value;
   };
 
@@ -110,6 +112,7 @@ namespace mni {
   struct Identifier : Expression {
     MNI_NODE(Identifier, Identifier, Expression)
     std::string name;
+    Symbol symbol = 0;
   };
 
   struct IntegerLiteral : Expression {
@@ -125,6 +128,7 @@ namespace mni {
   struct StringLiteral : Expression {
     MNI_NODE(StringLiteral, StringLiteral, Expression)
     std::string value;
+    std::shared_ptr<const std::string> shared;  // same text; lets evaluation share, not copy
   };
 
   struct BooleanLiteral : Expression {
@@ -193,6 +197,8 @@ namespace mni {
     MNI_NODE(ForInExpression, ForIn, Expression)
     std::string key;  // empty when there is no key variable
     std::string value;
+    Symbol keySymbol = 0;
+    Symbol valueSymbol = 0;
     ExprPtr iterable;
     std::unique_ptr<BlockStatement> body;
   };
@@ -211,12 +217,14 @@ namespace mni {
 
   struct Parameter {
     std::string name;
+    Symbol symbol = 0;
     ExprPtr defaultValue;  // null when required
   };
 
   struct FunctionLiteral : Expression {
     MNI_NODE(FunctionLiteral, Function, Expression)
     std::string name;  // empty for anonymous functions
+    Symbol symbol = 0;
     std::vector<Parameter> parameters;
     std::unique_ptr<BlockStatement> body;
   };
@@ -237,6 +245,7 @@ namespace mni {
     MNI_NODE(MethodCallExpression, MethodCall, Expression)
     ExprPtr object;
     std::string method;
+    Symbol methodSymbol = 0;
     std::vector<ExprPtr> arguments;
     std::vector<NamedArgument> namedArguments;
   };
@@ -251,6 +260,7 @@ namespace mni {
     MNI_NODE(PropertyExpression, Property, Expression)
     ExprPtr object;
     std::string property;
+    Symbol symbol = 0;
   };
 
   /** `tumia name1, name2` */

@@ -57,6 +57,34 @@ TEST_CASE("arithmetic keeps ints and floats apart") {
   CHECK(val("9223372036854775807 + 1") == "9223372036854776000");  // no wraparound: becomes a float
 }
 
+TEST_CASE("integers stay exact up to the int64 limit") {
+  CHECK(val("9223372036854775807 - 1") == "9223372036854775806");
+  CHECK(val("9223372036854775806 + 1") == "9223372036854775807");
+  CHECK(val("3037000499 * 3037000499") == "9223372030926249001");  // still fits
+  CHECK(val("3037000500 * 3037000500") == "9223372037000250000");  // overflows into a float
+  CHECK(val("aina(3037000500 * 3037000500)") == "\"DESIMALI\"");
+  CHECK(val("0 - 9223372036854775807 - 2") == "-9223372036854776000");
+  CHECK(val("7 % -1") == "0");
+  CHECK(val("-7 % 3") == "-1");
+}
+
+TEST_CASE("scopes with many variables work in functions and at top level") {
+  std::string body, sum;
+  for (int i = 0; i < 30; ++i) {
+    body += "v" + std::to_string(i) + " = " + std::to_string(i) + "\n";
+    sum += (i ? " + v" : "v") + std::to_string(i);
+  }
+  CHECK(val("f = unda() {\n" + body + "rudisha " + sum + "\n}\nf()") == "435");
+  CHECK(val(body + sum) == "435");
+}
+
+TEST_CASE("duplicated and recursive calls keep separate argument scopes") {
+  CHECK(val("f = unda(a, b = a + 1) { rudisha a * 10 + b } f(1) + f(2)") == "35");
+  CHECK(val("g = unda(n) { kama (n == 0) { rudisha 0 } rudisha n + g(n - 1) } g(100)") == "5050");
+  // in a plain call, `name = value` is an assignment passed positionally, not a named argument
+  CHECK(val("h = unda(x, y) { rudisha x - y } h(y = 1, x = 10)") == "-9");
+}
+
 TEST_CASE("floats print in shortest form") {
   CHECK(val("0.1 + 0.2") == "0.30000000000000004");
   CHECK(val("1000.0 * 1000") == "1000000");

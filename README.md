@@ -204,16 +204,19 @@ std::cout << result.inspect();                 // 42
 ## Project layout
 
 ```
-include/mni/   public headers: token, lexer, ast, parser, value, environment, interpreter, repl
+include/mni/   public headers: token, lexer, ast, parser, symbol, value, environment, interpreter, repl
 source/
   lexer, parser, ast, token         the frontend
-  value, interpreter, operators     values and the evaluator (operators.cpp: arithmetic, comparison, indexing)
+  value, symbol, environment        values, interned names, variable scopes
+  interpreter, operators, stack     the evaluator (operators.cpp: arithmetic, comparison, indexing;
+                                    stack.cpp: turns runaway recursion into an error)
   imports.cpp                       pakeji and tumia: package scopes, module and file loading
   builtins.cpp, methods.cpp         global functions; string and array methods
   hisabati, jsoni, muda, modules    the built-in modules and their registry
   native.h                          internal helpers shared by the native code (not installed)
 standalone/    the `nuru` executable
 test/          doctest unit tests
+bench/         benchmark programs; `bench/run.sh` prints their results, time them with a Release build
 cmake/         CPM and helper scripts
 ```
 

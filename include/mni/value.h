@@ -6,7 +6,6 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace mni {
@@ -33,14 +32,43 @@ namespace mni {
    */
   class Value {
   public:
-    // Same order as the variant alternatives below.
-    enum class Type { Null, Bool, Int, Float, String, Array, Dict, Function, Builtin, Package };
+    // Keep Package last: tag values are used as array indexes in a few places.
+    enum class Type : uint8_t {
+      Null,
+      Bool,
+      Int,
+      Float,
+      String,
+      Array,
+      Dict,
+      Function,
+      Builtin,
+      Package
+    };
 
     Value() = default;
-    static Value boolean(bool b);
-    static Value integer(int64_t i);
-    static Value real(double d);
+
+    static Value boolean(bool b) {
+      Value v;
+      v.type_ = Type::Bool;
+      v.scalar_.b = b;
+      return v;
+    }
+    static Value integer(int64_t i) {
+      Value v;
+      v.type_ = Type::Int;
+      v.scalar_.i = i;
+      return v;
+    }
+    static Value real(double d) {
+      Value v;
+      v.type_ = Type::Float;
+      v.scalar_.d = d;
+      return v;
+    }
     static Value string(std::string s);
+    /** Shares an existing string (used for literals, so evaluating one allocates nothing). */
+    static Value string(std::shared_ptr<const std::string> s);
     static Value array(std::vector<Value> items = {});
     static Value dict();
     static Value function(std::shared_ptr<Function> f);
@@ -48,25 +76,25 @@ namespace mni {
     static Value package(std::shared_ptr<Package> p);
     static Value native(std::string name, BuiltinFn fn, bool acceptsNamed = false);
 
-    Type type() const { return static_cast<Type>(data_.index()); }
-    bool isNull() const { return type() == Type::Null; }
-    bool isNumber() const { return type() == Type::Int || type() == Type::Float; }
+    Type type() const { return type_; }
+    bool isNull() const { return type_ == Type::Null; }
+    bool isNumber() const { return type_ == Type::Int || type_ == Type::Float; }
 
     /** Everything is true except tupu and sikweli (so 0 and "" are true). */
-    bool isTruthy() const;
+    bool isTruthy() const { return !(type_ == Type::Null || (type_ == Type::Bool && !scalar_.b)); }
 
-    bool asBool() const { return std::get<bool>(data_); }
-    int64_t asInt() const { return std::get<int64_t>(data_); }
-    double asFloat() const { return std::get<double>(data_); }
-    double toDouble() const;
-    const std::string& asString() const {
-      return *std::get<std::shared_ptr<const std::string>>(data_);
+    bool asBool() const { return scalar_.b; }
+    int64_t asInt() const { return scalar_.i; }
+    double asFloat() const { return scalar_.d; }
+    double toDouble() const {
+      return type_ == Type::Int ? static_cast<double>(scalar_.i) : scalar_.d;
     }
-    Array& asArray() const { return *std::get<std::shared_ptr<Array>>(data_); }
-    Dict& asDict() const { return *std::get<std::shared_ptr<Dict>>(data_); }
-    Function& asFunction() const { return *std::get<std::shared_ptr<Function>>(data_); }
-    Builtin& asBuiltin() const { return *std::get<std::shared_ptr<Builtin>>(data_); }
-    Package& asPackage() const { return *std::get<std::shared_ptr<Package>>(data_); }
+    const std::string& asString() const { return *static_cast<const std::string*>(ref_.get()); }
+    Array& asArray() const { return *static_cast<Array*>(ref_.get()); }
+    Dict& asDict() const { return *static_cast<Dict*>(ref_.get()); }
+    Function& asFunction() const { return *static_cast<Function*>(ref_.get()); }
+    Builtin& asBuiltin() const { return *static_cast<Builtin*>(ref_.get()); }
+    Package& asPackage() const { return *static_cast<Package*>(ref_.get()); }
 
     /** Form used by andika(): strings are raw, containers show their strings quoted. */
     std::string display() const;
@@ -78,14 +106,19 @@ namespace mni {
     bool sameObject(const Value& other) const;
 
   private:
-    using Data
-        = std::variant<std::monostate, bool, int64_t, double, std::shared_ptr<const std::string>,
-                       std::shared_ptr<Array>, std::shared_ptr<Dict>, std::shared_ptr<Function>,
-                       std::shared_ptr<Builtin>, std::shared_ptr<Package>>;
-    explicit Value(Data d) : data_(std::move(d)) {}
     void write(std::string& out, bool quoteStrings, std::vector<const void*>& path) const;
 
-    Data data_;
+    // Scalars live inline; everything else is a shared, type-erased heap object. A copy of a
+    // number or boolean only copies a null pointer, with no reference counting.
+    union Scalar {
+      int64_t i = 0;
+      bool b;
+      double d;
+    };
+
+    Type type_ = Type::Null;
+    Scalar scalar_;
+    std::shared_ptr<void> ref_;
   };
 
   struct Array {

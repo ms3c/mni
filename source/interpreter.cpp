@@ -23,6 +23,12 @@ namespace mni {
     // a few KB (more in debug builds), so this leaves room for the code that runs in between.
     constexpr std::size_t kMinStackBytes = 256 * 1024;
 
+    // The name of the current package scope inside a pakeji.
+    Symbol atSymbol() {
+      static const Symbol symbol = intern("@");
+      return symbol;
+    }
+
     TokenType baseOperator(TokenType assignOp) {
       switch (assignOp) {
         case TokenType::PlusAssign:
@@ -43,7 +49,7 @@ namespace mni {
       : std::runtime_error(joinLines(errs)), errors(std::move(errs)) {}
 
   Interpreter::Interpreter(std::ostream& out, std::istream& in)
-      : out_(out), in_(in), globals_(std::make_shared<Environment>()), env_(globals_) {
+      : out_(out), in_(in), globals_(std::make_shared<Environment>()), env_(globals_.get()) {
     installBuiltins();
   }
 
@@ -59,7 +65,7 @@ namespace mni {
       return execProgram(*programs_.back());
     } catch (...) {
       flow_ = Flow::None;
-      env_ = globals_;
+      env_ = globals_.get();
       callDepth_ = 0;
       throw;
     }
@@ -87,7 +93,7 @@ namespace mni {
       case NodeKind::Let: {
         auto* s = static_cast<const LetStatement*>(stmt);
         NURU_EVAL(value, s->value.get())
-        env_->define(s->name, std::move(value));
+        env_->define(s->symbol, std::move(value));
         return Value();
       }
       case NodeKind::Return: {
@@ -134,7 +140,7 @@ namespace mni {
       case NodeKind::FloatLiteral:
         return Value::real(static_cast<const FloatLiteral*>(expr)->value);
       case NodeKind::StringLiteral:
-        return Value::string(static_cast<const StringLiteral*>(expr)->value);
+        return Value::string(static_cast<const StringLiteral*>(expr)->shared);
       case NodeKind::BooleanLiteral:
         return Value::boolean(static_cast<const BooleanLiteral*>(expr)->value);
       case NodeKind::NullLiteral:
@@ -185,7 +191,7 @@ namespace mni {
   }
 
   Value Interpreter::evalIdentifier(const Identifier* id) {
-    if (Value* v = env_->lookup(id->name)) return *v;
+    if (Value* v = env_->lookup(id->symbol)) return *v;
     throw NuruError(id->token.line, "Kitambulishi hakipatikani: " + id->name);
   }
 
@@ -248,7 +254,7 @@ namespace mni {
     switch (target->kind) {
       case NodeKind::Identifier:
         ref.kind = Ref::Kind::Var;
-        ref.name = static_cast<const Identifier*>(target)->name;
+        ref.symbol = static_cast<const Identifier*>(target)->symbol;
         return true;
       case NodeKind::Index: {
         auto* ix = static_cast<const IndexExpression*>(target);
@@ -261,7 +267,7 @@ namespace mni {
       default: {  // Property: the parser only allows the three kinds
         auto* prop = static_cast<const PropertyExpression*>(target);
         ref.kind = Ref::Kind::Property;
-        ref.name = prop->property;
+        ref.symbol = prop->symbol;
         ref.object = eval(prop->object.get());
         return flow_ == Flow::None;
       }
@@ -271,55 +277,71 @@ namespace mni {
   Value Interpreter::readRef(const Ref& ref, int line) {
     switch (ref.kind) {
       case Ref::Kind::Var: {
-        Value* v = env_->lookup(ref.name);
-        if (!v) throw NuruError(line, "Kitambulishi hakipatikani: " + ref.name);
+        Value* v = env_->lookup(ref.symbol);
+        if (!v) throw NuruError(line, "Kitambulishi hakipatikani: " + symbolName(ref.symbol));
         return *v;
       }
       case Ref::Kind::Index:
         return indexValue(ref.object, ref.index, line);
       default:
-        return getProperty(ref.object, ref.name, line);
+        return getProperty(ref.object, ref.symbol, line);
     }
   }
 
   void Interpreter::writeRef(const Ref& ref, const Value& value, int line) {
     switch (ref.kind) {
       case Ref::Kind::Var:
-        env_->assign(ref.name, value);
+        env_->assign(ref.symbol, value);
         return;
       case Ref::Kind::Index:
         setIndex(ref.object, ref.index, value, line);
         return;
       default:
-        setProperty(ref.object, ref.name, value, line);
+        setProperty(ref.object, ref.symbol, value, line);
         return;
     }
   }
 
-  Value Interpreter::getProperty(const Value& object, const std::string& name, int line) {
+  Value Interpreter::getProperty(const Value& object, Symbol name, int line) {
     if (object.type() == Value::Type::Package) {
       const Package& pkg = object.asPackage();
-      Value* member = name == "@" ? nullptr : pkg.env->lookupOwn(name);
+      Value* member = name == atSymbol() ? nullptr : pkg.env->lookupOwn(name);
       if (!member)
-        throw NuruError(line,
-                        "'" + name + "' haipo kwenye " + pkg.typeName + " '" + pkg.name + "'");
+        throw NuruError(line, "'" + symbolName(name) + "' haipo kwenye " + pkg.typeName + " '"
+                                  + pkg.name + "'");
       return *member;
     }
-    throw NuruError(line, "Sifa '" + name + "' haipatikani kwenye " + object.typeName());
+    throw NuruError(line,
+                    "Sifa '" + symbolName(name) + "' haipatikani kwenye " + object.typeName());
   }
 
-  void Interpreter::setProperty(const Value& object, const std::string& name, Value value,
-                                int line) {
-    if (object.type() == Value::Type::Package && name != "@") {
+  void Interpreter::setProperty(const Value& object, Symbol name, Value value, int line) {
+    if (object.type() == Value::Type::Package && name != atSymbol()) {
       object.asPackage().env->define(name, std::move(value));
       return;
     }
-    throw NuruError(line, "Huwezi kuweka sifa '" + name + "' kwenye " + object.typeName());
+    throw NuruError(line,
+                    "Huwezi kuweka sifa '" + symbolName(name) + "' kwenye " + object.typeName());
   }
 
   Value Interpreter::evalAssign(const AssignExpression* e) {
     const int line = e->token.line;
     const bool compound = e->token.type != TokenType::Assign;
+
+    if (e->target->kind == NodeKind::Identifier) {  // plain variable: skip the generic Ref
+      const Symbol symbol = static_cast<const Identifier*>(e->target.get())->symbol;
+      Value current;
+      if (compound) {
+        Value* v = env_->lookup(symbol);
+        if (!v) throw NuruError(line, "Kitambulishi hakipatikani: " + symbolName(symbol));
+        current = *v;
+      }
+      NURU_EVAL(value, e->value.get())
+      if (compound) value = binaryOp(baseOperator(e->token.type), current, value, line);
+      env_->assign(symbol, value);
+      return value;
+    }
+
     Ref ref;
     if (!makeRef(e->target.get(), ref)) return Value();
     Value current;
@@ -333,17 +355,25 @@ namespace mni {
   Value Interpreter::evalPostfix(const PostfixExpression* e) {
     const int line = e->token.line;
     const int64_t delta = e->token.type == TokenType::PlusPlus ? 1 : -1;
+    auto bump = [&](const Value& current) {
+      if (current.type() == Value::Type::Int) return Value::integer(current.asInt() + delta);
+      if (current.type() == Value::Type::Float)
+        return Value::real(current.asFloat() + static_cast<double>(delta));
+      throw NuruError(line, "'" + e->op + "' inafanya kazi kwa namba tu, si " + current.typeName());
+    };
+
+    if (e->operand->kind == NodeKind::Identifier) {  // plain variable: skip the generic Ref
+      const Symbol symbol = static_cast<const Identifier*>(e->operand.get())->symbol;
+      Value* v = env_->lookup(symbol);
+      if (!v) throw NuruError(line, "Kitambulishi hakipatikani: " + symbolName(symbol));
+      Value updated = bump(*v);
+      env_->assign(symbol, updated);
+      return updated;
+    }
+
     Ref ref;
     if (!makeRef(e->operand.get(), ref)) return Value();
-    const Value current = readRef(ref, line);
-    Value updated;
-    if (current.type() == Value::Type::Int) {
-      updated = Value::integer(current.asInt() + delta);
-    } else if (current.type() == Value::Type::Float) {
-      updated = Value::real(current.asFloat() + static_cast<double>(delta));
-    } else {
-      throw NuruError(line, "'" + e->op + "' inafanya kazi kwa namba tu, si " + current.typeName());
-    }
+    Value updated = bump(readRef(ref, line));
     writeRef(ref, updated, line);
     return updated;
   }
@@ -374,8 +404,8 @@ namespace mni {
 
     // Iterates over a copy, so the body may modify the container. False means stop looping.
     auto step = [&](Value key, Value value) {
-      if (!e->key.empty()) env_->define(e->key, std::move(key));
-      env_->define(e->value, std::move(value));
+      if (!e->key.empty()) env_->define(e->keySymbol, std::move(key));
+      env_->define(e->valueSymbol, std::move(value));
       execBlock(e->body.get());
       if (flow_ == Flow::Break) {
         flow_ = Flow::None;
@@ -427,20 +457,37 @@ namespace mni {
   }
 
   Value Interpreter::evalFunction(const FunctionLiteral* e) {
-    Value fn = Value::function(std::make_shared<Function>(Function{e, env_}));
-    if (!e->name.empty()) env_->define(e->name, fn);
+    Value fn = Value::function(std::make_shared<Function>(Function{e, env_->shared_from_this()}));
+    if (!e->name.empty()) env_->define(e->symbol, fn);
     return fn;
   }
 
   Value Interpreter::evalCall(const CallExpression* e) {
     NURU_EVAL(callee, e->callee.get())
+    const int line = e->token.line;
+
+    if (callee.type() == Value::Type::Function) {
+      // Evaluate the arguments straight into the callee's new scope.
+      const FunctionLiteral* node = callee.asFunction().node;
+      const size_t paramCount = node->parameters.size();
+      auto local = std::make_shared<Environment>(callee.asFunction().closure, paramCount + 4);
+      for (size_t i = 0; i < e->arguments.size(); ++i) {
+        NURU_EVAL(v, e->arguments[i].get())
+        if (i < paramCount) local->define(node->parameters[i].symbol, std::move(v));
+      }
+      if (e->arguments.size() > paramCount)
+        throw NuruError(line, "Kazi inapokea hoja " + std::to_string(paramCount)
+                                  + " tu, lakini umetoa " + std::to_string(e->arguments.size()));
+      return runUser(callee, local, e->arguments.size(), line);
+    }
+
     std::vector<Value> args;
     args.reserve(e->arguments.size());
     for (const auto& a : e->arguments) {
       NURU_EVAL(v, a.get())
       args.push_back(std::move(v));
     }
-    return callFunction(callee, std::move(args), e->token.line);
+    return callFunction(callee, std::move(args), line);
   }
 
   Value Interpreter::evalMethodCall(const MethodCallExpression* e) {
@@ -456,6 +503,9 @@ namespace mni {
       NURU_EVAL(v, n.value.get())
       named.emplace_back(n.name, std::move(v));
     }
+    if (self.type() == Value::Type::Package)
+      return callFunction(getProperty(self, e->methodSymbol, e->token.line), std::move(args),
+                          e->token.line, std::move(named));
     return callMethod(self, e->method, args, named, e->token.line);
   }
 
@@ -483,48 +533,52 @@ namespace mni {
     if (args.size() > paramCount)
       throw NuruError(line, "Kazi inapokea hoja " + std::to_string(paramCount)
                                 + " tu, lakini umetoa " + std::to_string(args.size()));
-    if (callDepth_ >= maxCallDepth_ || stackBytesRemaining() < kMinStackBytes)
-      throw NuruError(line, "Kazi zimejiita mara nyingi mno (recursion imezidi kikomo)");
 
     // positional arguments first, then keyword arguments by parameter name
-    std::vector<Value> values(paramCount);
-    std::vector<bool> given(paramCount, false);
-    for (size_t i = 0; i < args.size(); ++i) {
-      values[i] = std::move(args[i]);
-      given[i] = true;
-    }
+    auto local = std::make_shared<Environment>(fn.closure, paramCount + 4);
+    for (size_t i = 0; i < args.size(); ++i)
+      local->define(node->parameters[i].symbol, std::move(args[i]));
     for (auto& [name, value] : named) {
       size_t j = 0;
       while (j < paramCount && node->parameters[j].name != name) ++j;
       if (j == paramCount) throw NuruError(line, "Kazi haina kigezo '" + name + "'");
-      if (given[j]) throw NuruError(line, "Kigezo '" + name + "' kimepewa thamani mara mbili");
-      values[j] = std::move(value);
-      given[j] = true;
+      const Symbol symbol = node->parameters[j].symbol;
+      if (local->lookupOwn(symbol))
+        throw NuruError(line, "Kigezo '" + name + "' kimepewa thamani mara mbili");
+      local->define(symbol, std::move(value));
     }
+    return runUser(callee, local, args.size() + named.size(), line);
+  }
+
+  Value Interpreter::runUser(const Value& callee, const std::shared_ptr<Environment>& local,
+                             size_t bound, int line) {
+    const FunctionLiteral* node = callee.asFunction().node;
+
+    // Checking the stack is not free, so only do it every few calls; a few calls never use
+    // anywhere near kMinStackBytes.
+    if (callDepth_ >= maxCallDepth_
+        || ((callDepth_ & 15) == 0 && stackBytesRemaining() < kMinStackBytes))
+      throw NuruError(line, "Kazi zimejiita mara nyingi mno (recursion imezidi kikomo)");
 
     struct Restore {
-      std::shared_ptr<Environment>& env;
-      std::shared_ptr<Environment> saved;
+      Environment*& env;
+      Environment* saved;
       int& depth;
       ~Restore() {
-        env = std::move(saved);
+        env = saved;
         --depth;
       }
     };
     ++callDepth_;
     Restore restore{env_, env_, callDepth_};
-    auto local = std::make_shared<Environment>(fn.closure);
-    env_ = local;
+    env_ = local.get();
 
-    for (size_t i = 0; i < paramCount; ++i) {
-      const Parameter& p = node->parameters[i];
-      if (given[i]) {
-        local->define(p.name, std::move(values[i]));
-      } else if (p.defaultValue) {
+    if (bound < node->parameters.size()) {  // fill in defaults, in order
+      for (const Parameter& p : node->parameters) {
+        if (local->lookupOwn(p.symbol)) continue;
+        if (!p.defaultValue) throw NuruError(line, "Kigezo '" + p.name + "' hakijapewa thamani");
         Value v = eval(p.defaultValue.get());
-        local->define(p.name, std::move(v));
-      } else {
-        throw NuruError(line, "Kigezo '" + p.name + "' hakijapewa thamani");
+        local->define(p.symbol, std::move(v));
       }
     }
 
@@ -542,11 +596,11 @@ namespace mni {
 
   Value Interpreter::evalProperty(const PropertyExpression* e) {
     NURU_EVAL(object, e->object.get())
-    return getProperty(object, e->property, e->token.line);
+    return getProperty(object, e->symbol, e->token.line);
   }
 
   Value Interpreter::evalAt(const AtExpression* e) {
-    if (Value* self = env_->lookup("@")) return *self;
+    if (Value* self = env_->lookup(atSymbol())) return *self;
     throw NuruError(e->token.line, "'@' inatumika ndani ya pakeji tu");
   }
 

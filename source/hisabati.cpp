@@ -154,7 +154,7 @@ namespace mni::native {
     // Not in the written docs, but upstream's examples use it: a float in [0, 1).
     addFunction(pkg, "random", [](Interpreter&, std::vector<Value>& args, NamedArgs&, int line) {
       expectArgs("random", args, 0, 0, line);
-      static std::mt19937_64 engine{std::random_device{}()};
+      thread_local std::mt19937_64 engine{std::random_device{}()};
       return Value::real(std::uniform_real_distribution<double>(0.0, 1.0)(engine));
     });
 

@@ -19,19 +19,18 @@ namespace mni {
     auto pkg = std::make_shared<Package>();
     pkg->name = e->name;
     pkg->typeName = "PAKEJI";
-    pkg->env = std::make_shared<Environment>(env_);
+    pkg->env = std::make_shared<Environment>(env_->shared_from_this());
     pkg->env->setBoundary();
     Value value = Value::package(pkg);
     pkg->env->define("@", value);
 
     {
-      auto saved = env_;
-      env_ = pkg->env;
       struct Restore {
-        std::shared_ptr<Environment>& env;
-        std::shared_ptr<Environment> saved;
-        ~Restore() { env = std::move(saved); }
-      } restore{env_, std::move(saved)};
+        Environment*& env;
+        Environment* saved;
+        ~Restore() { env = saved; }
+      } restore{env_, env_};
+      env_ = pkg->env.get();
       execBlock(e->body.get());
       if (flow_ != Flow::None) {
         flow_ = Flow::None;
@@ -110,17 +109,17 @@ namespace mni {
     moduleEnv->setBoundary();
     struct Restore {
       Interpreter& self;
-      std::shared_ptr<Environment> env;
+      Environment* env;
       std::string dir;
       ~Restore() {
-        self.env_ = std::move(env);
+        self.env_ = env;
         self.currentDir_ = std::move(dir);
         self.loading_.pop_back();
       }
     };
     loading_.push_back(key);
     Restore restore{*this, env_, currentDir_};
-    env_ = moduleEnv;
+    env_ = moduleEnv.get();
     currentDir_ = std::filesystem::path(path).parent_path().string();
     execProgram(prog);
 

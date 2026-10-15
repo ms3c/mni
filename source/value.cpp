@@ -9,30 +9,57 @@
 
 namespace mni {
 
-  Value Value::boolean(bool b) { return Value(Data(b)); }
-  Value Value::integer(int64_t i) { return Value(Data(i)); }
-  Value Value::real(double d) { return Value(Data(d)); }
   Value Value::string(std::string s) {
-    return Value(Data(std::make_shared<const std::string>(std::move(s))));
+    return string(std::make_shared<const std::string>(std::move(s)));
   }
+
+  Value Value::string(std::shared_ptr<const std::string> s) {
+    Value v;
+    v.type_ = Type::String;
+    v.ref_ = std::const_pointer_cast<std::string>(std::move(s));  // never mutated through the Value
+    return v;
+  }
+
   Value Value::array(std::vector<Value> items) {
     auto a = std::make_shared<Array>();
     a->items = std::move(items);
-    return Value(Data(std::move(a)));
+    Value v;
+    v.type_ = Type::Array;
+    v.ref_ = std::move(a);
+    return v;
   }
-  Value Value::dict() { return Value(Data(std::make_shared<Dict>())); }
-  Value Value::function(std::shared_ptr<Function> f) { return Value(Data(std::move(f))); }
-  Value Value::builtin(std::shared_ptr<Builtin> b) { return Value(Data(std::move(b))); }
-  Value Value::package(std::shared_ptr<Package> p) { return Value(Data(std::move(p))); }
+
+  Value Value::dict() {
+    Value v;
+    v.type_ = Type::Dict;
+    v.ref_ = std::make_shared<Dict>();
+    return v;
+  }
+
+  Value Value::function(std::shared_ptr<Function> f) {
+    Value v;
+    v.type_ = Type::Function;
+    v.ref_ = std::move(f);
+    return v;
+  }
+
+  Value Value::builtin(std::shared_ptr<Builtin> b) {
+    Value v;
+    v.type_ = Type::Builtin;
+    v.ref_ = std::move(b);
+    return v;
+  }
+
+  Value Value::package(std::shared_ptr<Package> p) {
+    Value v;
+    v.type_ = Type::Package;
+    v.ref_ = std::move(p);
+    return v;
+  }
+
   Value Value::native(std::string name, BuiltinFn fn, bool acceptsNamed) {
     return builtin(
         std::make_shared<Builtin>(Builtin{std::move(name), std::move(fn), acceptsNamed}));
-  }
-
-  bool Value::isTruthy() const { return !(isNull() || (type() == Type::Bool && !asBool())); }
-
-  double Value::toDouble() const {
-    return type() == Type::Int ? static_cast<double>(asInt()) : asFloat();
   }
 
   const char* Value::typeName() const {

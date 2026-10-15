@@ -98,20 +98,23 @@ namespace mni {
     // A place that can be read and written: `x`, `a[i]` or `o.p`.
     struct Ref {
       enum class Kind { Var, Index, Property } kind = Kind::Var;
-      std::string name;  // variable or property name
-      Value object;      // Index / Property
-      Value index;       // Index
+      Symbol symbol = 0;  // variable or property name
+      Value object;       // Index / Property
+      Value index;        // Index
     };
     bool makeRef(const Expression* target, Ref& ref);  // false if a break/return interrupted it
     Value readRef(const Ref& ref, int line);
     void writeRef(const Ref& ref, const Value& value, int line);
-    Value getProperty(const Value& object, const std::string& name, int line);
-    void setProperty(const Value& object, const std::string& name, Value value, int line);
+    Value getProperty(const Value& object, Symbol name, int line);
+    void setProperty(const Value& object, Symbol name, Value value, int line);
 
     Value binaryOp(TokenType op, const Value& left, const Value& right, int line);
     Value indexValue(const Value& object, const Value& index, int line);
     void setIndex(const Value& object, const Value& index, Value value, int line);
     Value callUser(const Value& fn, std::vector<Value>& args, NamedArgs& named, int line);
+    // Runs a user function whose parameters are (partly) bound in `local`; `bound` counts them.
+    Value runUser(const Value& fn, const std::shared_ptr<Environment>& local, size_t bound,
+                  int line);
     Value execProgram(const Program& program);
     Value loadModule(const std::string& name, int line);
     Value importFile(const std::string& path, const std::string& packageName, int line);
@@ -124,7 +127,7 @@ namespace mni {
     std::ostream& out_;
     std::istream& in_;
     std::shared_ptr<Environment> globals_;
-    std::shared_ptr<Environment> env_;
+    Environment* env_;  // the current scope; whoever switches it keeps the owning shared_ptr alive
     std::vector<std::unique_ptr<Program>> programs_;
     Flow flow_ = Flow::None;
     Value returnValue_;

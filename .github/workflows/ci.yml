@@ -110,6 +110,41 @@ jobs:
       - name: Test
         run: ctest --test-dir build/test
 
+  sanitizers:
+    name: Sanitizers (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: ASan + UBSan, sanitizer: "Address;Undefined" }
+          - { name: TSan, sanitizer: Thread }
+    env:
+      # Closures and scopes form reference cycles that are only freed at exit (a known limitation).
+      ASAN_OPTIONS: detect_leaks=0
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: cpm_modules
+          key: cpm-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
+          restore-keys: cpm-${{ runner.os }}-
+
+      # Recent kernels randomize memory more than the sanitizer runtimes support.
+      - name: Lower ASLR entropy
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      - name: Configure
+        run: cmake -S test -B build -DCMAKE_BUILD_TYPE=Debug -DUSE_SANITIZER="${{ matrix.sanitizer }}"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build
+
   style:
     name: Style
     runs-on: ubuntu-latest

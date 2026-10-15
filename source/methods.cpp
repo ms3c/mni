@@ -131,7 +131,8 @@ namespace mni {
   Value Interpreter::callMethod(const Value& self, const std::string& name,
                                 std::vector<Value>& args, NamedArgs& named, int line) {
     if (self.type() == Value::Type::Package)
-      return callFunction(getProperty(self, name, line), std::move(args), line, std::move(named));
+      return callFunction(getProperty(self, intern(name), line), std::move(args), line,
+                          std::move(named));
     if (!named.empty()) throw NuruError(line, "'" + name + "' haipokei hoja zenye majina");
 
     const MethodTable* table = self.type() == Value::Type::String  ? &stringMethods()

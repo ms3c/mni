@@ -165,6 +165,7 @@ namespace mni {
     auto stmt = node<LetStatement>(cur_);
     if (!expectPeek(TokenType::Ident)) return nullptr;
     stmt->name = cur_.literal;
+    stmt->symbol = intern(stmt->name);
     if (!expectPeek(TokenType::Assign)) return nullptr;
     advance();
     stmt->value = parseExpression(Precedence::Lowest);
@@ -243,6 +244,7 @@ namespace mni {
       case TokenType::Ident: {
         auto id = node<Identifier>(cur_);
         id->name = cur_.literal;
+        id->symbol = intern(id->name);
         return id;
       }
       case TokenType::Int:
@@ -252,6 +254,7 @@ namespace mni {
       case TokenType::String: {
         auto s = node<StringLiteral>(cur_);
         s->value = cur_.literal;
+        s->shared = std::make_shared<const std::string>(cur_.literal);
         return s;
       }
       case TokenType::True:
@@ -460,10 +463,12 @@ namespace mni {
       advance();
       if (!expectPeek(TokenType::Ident)) return nullptr;
       expr->key = std::move(first);
+      expr->keySymbol = intern(expr->key);
       expr->value = cur_.literal;
     } else {
       expr->value = std::move(first);
     }
+    expr->valueSymbol = intern(expr->value);
     if (!expectPeek(TokenType::In)) return nullptr;
     advance();
     expr->iterable = parseExpression(Precedence::Lowest);
@@ -530,6 +535,7 @@ namespace mni {
     if (peekIs(TokenType::Ident)) {
       advance();
       fn->name = cur_.literal;
+      fn->symbol = intern(fn->name);
     }
     if (!expectPeek(TokenType::LParen) || !parseParameters(*fn) || !expectPeek(TokenType::LBrace))
       return nullptr;
@@ -548,6 +554,7 @@ namespace mni {
       if (!expectPeek(TokenType::Ident)) return false;
       Parameter param;
       param.name = cur_.literal;
+      param.symbol = intern(param.name);
       if (peekIs(TokenType::Assign)) {
         advance();
         advance();
@@ -622,12 +629,14 @@ namespace mni {
       auto prop = node<PropertyExpression>(std::move(dot));
       prop->object = std::move(object);
       prop->property = std::move(name);
+      prop->symbol = intern(prop->property);
       return prop;
     }
 
     auto call = node<MethodCallExpression>(std::move(dot));
     call->object = std::move(object);
     call->method = std::move(name);
+    call->methodSymbol = intern(call->method);
     advance();
     if (peekIs(TokenType::RParen)) {
       advance();

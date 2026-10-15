@@ -1,12 +1,44 @@
 #include <mni/interpreter.h>
 
 #include <cmath>
+#include <cstdint>
 
 namespace mni {
 
   namespace {
     // Integer results that would not fit in an int64 fall back to doubles.
     constexpr double kIntLimit = 9.2e18;
+
+    // True if the result does not fit in an int64 (out is only valid when this is false).
+    bool addOverflows(int64_t a, int64_t b, int64_t& out) {
+#if defined(__GNUC__) || defined(__clang__)
+      return __builtin_add_overflow(a, b, &out);
+#else
+      if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) return true;
+      out = a + b;
+      return false;
+#endif
+    }
+
+    bool subOverflows(int64_t a, int64_t b, int64_t& out) {
+#if defined(__GNUC__) || defined(__clang__)
+      return __builtin_sub_overflow(a, b, &out);
+#else
+      if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) return true;
+      out = a - b;
+      return false;
+#endif
+    }
+
+    bool mulOverflows(int64_t a, int64_t b, int64_t& out) {
+#if defined(__GNUC__) || defined(__clang__)
+      return __builtin_mul_overflow(a, b, &out);
+#else
+      if (std::fabs(static_cast<double>(a) * static_cast<double>(b)) >= kIntLimit) return true;
+      out = a * b;
+      return false;
+#endif
+    }
 
     Value intPow(int64_t base, int64_t exp) {
       if (exp < 0)
@@ -23,6 +55,41 @@ namespace mni {
 
   Value Interpreter::binaryOp(TokenType op, const Value& l, const Value& r, int line) {
     using T = Value::Type;
+
+    // Fast path for the common case; anything unusual (overflow, division) falls through.
+    if (l.type() == T::Int && r.type() == T::Int) {
+      const int64_t a = l.asInt(), b = r.asInt();
+      int64_t out = 0;
+      switch (op) {
+        case TokenType::Plus:
+          if (!addOverflows(a, b, out)) return Value::integer(out);
+          break;
+        case TokenType::Minus:
+          if (!subOverflows(a, b, out)) return Value::integer(out);
+          break;
+        case TokenType::Asterisk:
+          if (!mulOverflows(a, b, out)) return Value::integer(out);
+          break;
+        case TokenType::Modulus:
+          if (b != 0 && b != -1) return Value::integer(a % b);
+          break;
+        case TokenType::Eq:
+          return Value::boolean(a == b);
+        case TokenType::NotEq:
+          return Value::boolean(a != b);
+        case TokenType::Lt:
+          return Value::boolean(a < b);
+        case TokenType::Lte:
+          return Value::boolean(a <= b);
+        case TokenType::Gt:
+          return Value::boolean(a > b);
+        case TokenType::Gte:
+          return Value::boolean(a >= b);
+        default:
+          break;
+      }
+    }
+
     auto mismatch = [&]() -> NuruError {
       return NuruError(line, std::string("Operesheni haijulikani: ") + l.typeName() + " "
                                  + std::string(tokenTypeName(op)) + " " + r.typeName());
