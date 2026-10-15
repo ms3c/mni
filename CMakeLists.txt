@@ -2,10 +2,11 @@ cmake_minimum_required(VERSION 3.14...3.22)
 
 # ---- Project ----
 
-# Note: update this to your new project's name and version
+# Mohd Nuru Interpreter: a C++ interpreter for the Nuru language
+# (https://github.com/NuruProgramming/Nuru)
 project(
-  Greeter
-  VERSION 1.0
+  mni
+  VERSION 0.1.0
   LANGUAGES CXX
 )
 
@@ -45,7 +46,7 @@ file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/source/
 # Note: for header-only libraries change all PUBLIC flags to INTERFACE and create an interface
 # target: add_library(${PROJECT_NAME} INTERFACE)
 add_library(${PROJECT_NAME} ${headers} ${sources})
-set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
 # being a cross-platform target, we enforce standards conformance on MSVC
 target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive->")

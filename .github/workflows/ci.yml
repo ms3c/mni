@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CTEST_OUTPUT_ON_FAILURE: 1
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/cpm_modules
+
+jobs:
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux GCC, os: ubuntu-latest, cxx: g++ }
+          - { name: Linux Clang, os: ubuntu-latest, cxx: clang++ }
+          - { name: macOS, os: macos-latest }
+          - { name: Windows, os: windows-latest }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: cpm_modules
+          key: cpm-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
+          restore-keys: cpm-${{ runner.os }}-
+
+      - name: Configure
+        run: >
+          cmake -S test -B build -DCMAKE_BUILD_TYPE=Debug
+          ${{ matrix.cxx && format('-DCMAKE_CXX_COMPILER={0}', matrix.cxx) || '' }}
+
+      - name: Build
+        run: cmake --build build --config Debug --parallel
+
+      - name: Test
+        run: ctest --test-dir build --build-config Debug
+
+  standalone:
+    name: Standalone (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: cpm_modules
+          key: cpm-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
+          restore-keys: cpm-${{ runner.os }}-
+
+      - name: Configure
+        run: cmake -S standalone -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          nuru=$(find build \( -name nuru -o -name nuru.exe \) -type f | head -n 1)
+          "$nuru" --toleo
+          printf 'fanya x = 6 * 7\nandika("jibu:", x)\n' > smoke.nr
+          test "$("$nuru" smoke.nr | tr -d '\r')" = "jibu: 42"
+          printf 'andika(zzz)\n' > bad.nr
+          if "$nuru" bad.nr; then echo "expected a runtime error"; exit 1; fi
+
+  install:
+    name: Install
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: cpm_modules
+          key: cpm-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
+          restore-keys: cpm-${{ runner.os }}-
+
+      - name: Build and install the library
+        run: |
+          cmake -S . -B build/lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/install"
+          cmake --build build/lib --target install --parallel
+
+      - name: Configure the tests against the installed library
+        run: cmake -S test -B build/test -DTEST_INSTALLED_VERSION=1 -DCMAKE_PREFIX_PATH="$PWD/install"
+
+      - name: Build
+        run: cmake --build build/test --parallel
+
+      - name: Test
+        run: ctest --test-dir build/test
+
+  style:
+    name: Style
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - uses: actions/cache@v4
+        with:
+          path: cpm_modules
+          key: cpm-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
+          restore-keys: cpm-${{ runner.os }}-
+
+      - name: Install formatters
+        run: pip install clang-format==14.0.6 cmake_format==0.6.11 pyyaml
+
+      - name: Configure
+        run: cmake -S test -B build
+
+      - name: Check formatting
+        run: cmake --build build --target check-format
