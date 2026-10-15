@@ -59,7 +59,8 @@ if(MNI_ENABLE_HTTP)
     GITHUB_REPOSITORY libcpr/cpr
     GIT_TAG 1.15.1
     OPTIONS "CPR_USE_SYSTEM_CURL ${MNI_CPR_SYSTEM_CURL}" "CPR_CURL_USE_LIBPSL OFF"
-            "CPR_ENABLE_INSTALL OFF" "CPR_BUILD_TESTS OFF"
+            # cpr defaults to shared libraries on Windows; static means nuru.exe needs no DLLs
+            "BUILD_SHARED_LIBS OFF" "CPR_ENABLE_INSTALL OFF" "CPR_BUILD_TESTS OFF"
   )
 endif()
 
@@ -74,7 +75,7 @@ file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/source/
 
 # Note: for header-only libraries change all PUBLIC flags to INTERFACE and create an interface
 # target: add_library(${PROJECT_NAME} INTERFACE)
-add_library(${PROJECT_NAME} ${headers} ${sources})
+add_library(${PROJECT_NAME} STATIC ${headers} ${sources})
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
 # being a cross-platform target, we enforce standards conformance on MSVC
