@@ -85,6 +85,9 @@ TEST_CASE("subtraction overflow detection is exact") {
 }
 
 #ifdef __SIZEOF_INT128__
+// __extension__ tells -Wpedantic that the compiler's 128-bit integer is used on purpose.
+__extension__ typedef __int128 WideInt;
+
 TEST_CASE("portable overflow checks agree with 128-bit arithmetic on many values") {
   std::vector<int64_t> values
       = {0,        1,          -1,         2,           -2,          3,         1000003,
@@ -98,13 +101,13 @@ TEST_CASE("portable overflow checks agree with 128-bit arithmetic on many values
     values.push_back(static_cast<int64_t>(state));
     values.push_back(static_cast<int64_t>(state >> (state % 40)));
   }
-  auto fits = [](__int128 v) { return v >= kMin && v <= kMax; };
+  auto fits = [](WideInt v) { return v >= kMin && v <= kMax; };
   for (int64_t a : values) {
     for (int64_t b : values) {
       int64_t out = 0;
-      CHECK(mulOverflowsPortable(a, b, out) == !fits(static_cast<__int128>(a) * b));
-      CHECK(addOverflowsPortable(a, b, out) == !fits(static_cast<__int128>(a) + b));
-      CHECK(subOverflowsPortable(a, b, out) == !fits(static_cast<__int128>(a) - b));
+      CHECK(mulOverflowsPortable(a, b, out) == !fits(static_cast<WideInt>(a) * b));
+      CHECK(addOverflowsPortable(a, b, out) == !fits(static_cast<WideInt>(a) + b));
+      CHECK(subOverflowsPortable(a, b, out) == !fits(static_cast<WideInt>(a) - b));
     }
   }
 }
