@@ -1,0 +1,9 @@
+name: System dependencies
+description: Installs what the build needs from the OS (libcurl headers on Linux, used by cpr for mtandao).
+
+runs:
+  using: composite
+  steps:
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libcurl4-openssl-dev

@@ -63,8 +63,8 @@ namespace mni {
         modules_["native:" + stem] = native;
         return native;
       }
-      if (isUnimplementedModule(stem))
-        throw NuruError(line, "Moduli '" + stem + "' bado haijaandikwa");
+      if (isUnavailableModule(stem))
+        throw NuruError(line, "Moduli '" + stem + "' haikujumuishwa kwenye ujenzi huu");
     }
 
     std::filesystem::path file = given;

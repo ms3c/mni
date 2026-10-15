@@ -4,7 +4,7 @@
 
 `mni` is an interpreter for [Nuru](https://github.com/NuruProgramming/Nuru), the programming language with Swahili keywords. It is a tree-walking interpreter written in C++20: a lexer, a Pratt parser, and an evaluator, with the standalone executable `nuru`.
 
-> **Status:** work in progress. The language core, packages and imports, and the `hisabati`, `jsoni` and `muda` modules work. HTTP (`mtandao`) and `os` do not exist yet. See [What's missing](#whats-missing).
+> **Status:** work in progress. The language core, packages and imports, and the `hisabati`, `jsoni`, `muda`, `mtandao` (HTTP) and `os` modules work. See [What's missing](#whats-missing).
 
 ```nuru
 fanya salamu = unda(jina, lugha = "sw") {
@@ -28,7 +28,9 @@ kwa i, jina ktk ["Juma", "Asha"] {
 
 ## Build
 
-You need CMake 3.14 or newer and a C++20 compiler. Dependencies ([fmt](https://github.com/fmtlib/fmt), [doctest](https://github.com/doctest/doctest)) are downloaded by CMake on first configure, so the first build needs network access.
+You need CMake 3.24 or newer and a C++20 compiler. Dependencies are downloaded by CMake on first configure, so the first build needs network access: [fmt](https://github.com/fmtlib/fmt), [nlohmann/json](https://github.com/nlohmann/json), [cpr](https://github.com/libcpr/cpr) (HTTP) and, for the tests, [doctest](https://github.com/doctest/doctest).
+
+cpr uses the system libcurl on Linux and macOS (macOS ships it; on Debian and Ubuntu install `libcurl4-openssl-dev`) and builds curl itself on Windows.
 
 ```sh
 cmake -Sstandalone -Bbuild/standalone -DCMAKE_BUILD_TYPE=Release
@@ -37,6 +39,8 @@ cmake --build build/standalone
 ```
 
 Without `-DCMAKE_BUILD_TYPE=Release` the build is unoptimized and noticeably slower.
+
+Pass `-DMNI_ENABLE_HTTP=OFF` to build without the `mtandao` module and without libcurl and cpr. Installing the library (`cmake --install`) currently requires this, because the installed package cannot carry cpr; with HTTP on, install stops with an explanatory error.
 
 ## Usage
 
@@ -173,11 +177,13 @@ Method calls accept named arguments: `benki.andaa(salio = 100)`. Plain calls do 
 | `hisabati` | constants `PI`, `e`, `phi`, `ln2`, `ln10`, `log2e`, `log10e`, `sqrt1_2`, `sqrt2`, `sqrt3`, `sqrt5`, `EPSILON`; functions `abs sign sqrt cbrt root factorial ceil floor round max min hypot random` and the trigonometric, hyperbolic, exponential and logarithmic functions |
 | `jsoni` | `dikodi(text)` parses JSON into dictionaries and arrays; `enkodi(value)` produces compact JSON |
 | `muda` | `hasahivi()`, `leo()`, `tangu(t)`, `lala(seconds)`, `baada_ya(seconds)`, `tofauti(a, b)`, and `t.ongeza(sekunde=, dakika=, masaa=, siku=, wiki=, miezi=, miaka=)` |
+| `mtandao` | HTTP: `peruzi(url)` or `peruzi(yuareli=, vichwa=, mwili=)` sends a GET (`mwili` becomes query parameters); `tuma(yuareli=, vichwa=, mwili=)` sends a POST. `vichwa` is a dictionary of headers. A dictionary or array `mwili` is sent as JSON, a string as is. Both return the response body as a string whatever the status code, and raise an error if the request cannot be made (30 second timeout). |
+| `os` | `kimbiza(command)` runs a shell command and returns what it printed; `toka(code?)` exits |
 
 ## What's missing
 
-- The `mtandao` (HTTP) and `os` modules. `tumia mtandao` reports that it is not written yet.
 - Dictionary methods and `dict.key` access (use `dict["key"]`).
+- Running scripts you do not trust: `fungua`, `tumia`, `os.kimbiza` and `mtandao` can all reach outside the program, and there are no step or time limits yet.
 - `hisabati.round` with a rounding-method argument.
 - Memory from closures and self-referencing structures is not reclaimed until the program exits.
 

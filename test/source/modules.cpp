@@ -192,7 +192,6 @@ TEST_CASE("tumia errors") {
   CHECK(contains(errorIn(dir, "tumia empty"), "halina pakeji 'empty'"));
   CHECK(contains(errorIn(dir, "tumia broken"), "broken.nr"));
   CHECK(contains(errorIn(dir, "tumia a"), "mzunguko"));
-  CHECK(contains(errorIn(dir, "tumia mtandao"), "bado haijaandikwa"));
 }
 
 TEST_CASE("the interpreter recovers after a failed import") {
@@ -274,6 +273,12 @@ jsoni.dikodi('{"a": 1, "b": [true, null, 2.5, -3], "c": "x\\ny", "d": {}}'))")
   CHECK(val("tumia jsoni\nk = jsoni.dikodi('{\"joke\": \"ha\"}')\nk[\"joke\"]") == "\"ha\"");
 }
 
+TEST_CASE("jsoni keeps the key order of the document") {
+  CHECK(val("tumia jsoni\njsoni.dikodi('{\"z\": 1, \"a\": 2, \"m\": {\"y\": 0, \"b\": 1}}')")
+        == "{\"z\": 1, \"a\": 2, \"m\": {\"y\": 0, \"b\": 1}}");
+  CHECK(val("tumia jsoni\njsoni.enkodi({\"z\": 1, \"a\": 2})") == "\"{\\\"z\\\":1,\\\"a\\\":2}\"");
+}
+
 TEST_CASE("jsoni encodes values") {
   CHECK(val("tumia jsoni\njsoni.enkodi({\"a\": \"apple\", \"b\": [1, kweli, tupu, 2.5]})")
         == R"("{\"a\":\"apple\",\"b\":[1,true,null,2.5]}")");
@@ -288,8 +293,9 @@ TEST_CASE("jsoni encodes values") {
 TEST_CASE("jsoni errors") {
   CHECK(contains(errorOf("tumia jsoni\njsoni.dikodi('{')"), "JSON si sahihi"));
   CHECK(contains(errorOf("tumia jsoni\njsoni.dikodi('[1,]')"), "JSON si sahihi"));
-  CHECK(contains(errorOf("tumia jsoni\njsoni.dikodi('{\"a\" 1}')"), "tulitegemea ':'"));
-  CHECK(contains(errorOf("tumia jsoni\njsoni.dikodi('1 2')"), "ziada"));
+  CHECK(contains(errorOf("tumia jsoni\njsoni.dikodi('{\"a\" 1}')"), "JSON si sahihi"));
+  CHECK(contains(errorOf("tumia jsoni\njsoni.dikodi('1 2')"), "JSON si sahihi"));
+  CHECK(contains(errorOf("tumia jsoni\njsoni.dikodi('')"), "JSON si sahihi"));
   CHECK(contains(errorOf("tumia jsoni\njsoni.dikodi(5)"), "inahitaji NENO"));
   CHECK(contains(errorOf("tumia jsoni\njsoni.enkodi(unda() {})"), "haiwezi kuwa JSON"));
 }

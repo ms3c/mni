@@ -9,11 +9,11 @@
 
 namespace mni {
 
-  /** Creates a built-in module (`hisabati`, `jsoni`, `muda`), or returns tupu for other names. */
+  /** Creates a built-in module (`hisabati`, `jsoni`, `muda`, `os`, `mtandao`), or returns tupu. */
   Value createNativeModule(const std::string& name);
 
-  /** Modules that exist in Nuru but are not implemented here yet (`mtandao`, `os`). */
-  bool isUnimplementedModule(const std::string& name);
+  /** Modules this build leaves out: `mtandao` when configured with -DMNI_ENABLE_HTTP=OFF. */
+  bool isUnavailableModule(const std::string& name);
 
   /** Implements `fungua`: a FAILI object whose `soma()` returns the file contents. */
   Value openFile(const std::string& path, int line);
@@ -25,6 +25,11 @@ namespace mni::native {
   Value createHisabati();
   Value createJsoni();
   Value createMuda();
+  Value createOs();
+  Value createMtandao();  // tupu when built without HTTP support
+
+  /** Compact JSON text for a value (what jsoni.enkodi produces). */
+  std::string jsonEncode(const Value& value, int line);
 
   inline void addFunction(const Value& pkg, const std::string& name, BuiltinFn fn,
                           bool acceptsNamed = false) {
