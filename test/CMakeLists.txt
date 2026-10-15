@@ -63,18 +63,18 @@ enable_testing()
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(${PROJECT_NAME})
 
-# The same tests again with the bytecode VM selected (a no-op until the VM exists: MNI_BACKEND=vm
-# falls back to the tree-walker in a build without it). doctest names its generated files from the
-# test spec and extra arguments only, so EXTRA_ARGS also keeps the two registrations apart.
+# The same tests again with the tree-walking evaluator selected (the VM is the default). doctest
+# names its generated files from the test spec and extra arguments only, so EXTRA_ARGS also keeps
+# the two registrations apart.
 doctest_discover_tests(
   ${PROJECT_NAME}
   TEST_SUFFIX
-  " on vm"
+  " on tree"
   EXTRA_ARGS
   --no-colors
   PROPERTIES
   ENVIRONMENT
-  "MNI_BACKEND=vm"
+  "MNI_BACKEND=tree"
 )
 
 # ---- code coverage ----

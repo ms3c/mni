@@ -64,9 +64,10 @@ namespace mni {
   /**
    * @brief The Nuru interpreter, with two backends
    *
-   * The tree-walking evaluator is the default. The bytecode VM (Backend::Vm, or MNI_BACKEND=vm)
-   * gives the same results; it keeps Nuru calls on the heap and is described in
-   * docs/vm-divergences.md.
+   * The bytecode VM is the default. The tree-walking evaluator (Backend::Tree, or MNI_BACKEND=tree)
+   * gives the same results and is kept as a reference; the differences are in
+   * docs/vm-divergences.md. The VM keeps Nuru calls on the heap, so deep recursion does not use
+   * the C++ stack.
    *
    * Scoping: functions create a scope; blocks (kama, wakati, kwa, ...) do not. `x = v` updates the
    * nearest existing `x` or creates it in the current scope; `fanya x = v` always creates it in the
@@ -77,7 +78,7 @@ namespace mni {
   public:
     /** The engine that runs programs. */
     enum class Backend {
-      Default,  // the MNI_BACKEND environment variable ("vm" or "tree"); tree if unset
+      Default,  // the MNI_BACKEND environment variable ("vm" or "tree"); the VM if unset
       Tree,     // the tree-walking evaluator
       Vm        // the bytecode VM
     };

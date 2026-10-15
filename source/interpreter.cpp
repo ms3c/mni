@@ -74,7 +74,7 @@ namespace mni {
       : out_(out), in_(in), globals_(std::make_shared<Environment>()), env_(globals_.get()) {
     Backend wanted = options.backend;
     if (wanted == Backend::Default)
-      wanted = environmentVariable("MNI_BACKEND") == "vm" ? Backend::Vm : Backend::Tree;
+      wanted = environmentVariable("MNI_BACKEND") == "tree" ? Backend::Tree : Backend::Vm;
     backend_ = wanted == Backend::Vm && vmAvailable() ? Backend::Vm : Backend::Tree;
     if (backend_ == Backend::Vm) vm_ = std::make_unique<Vm>(*this);
     installBuiltins();

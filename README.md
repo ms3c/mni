@@ -198,7 +198,7 @@ ctest --test-dir build/test --output-on-failure
 
 ## Backends and limits
 
-The tree-walking evaluator is the default. Set `MNI_BACKEND=vm` (or pass `Interpreter::Options` with `Backend::Vm`) to run on the bytecode VM instead. It gives the same values, output and error messages, apart from the cases in [docs/vm-divergences.md](docs/vm-divergences.md). VM calls do not use the C++ stack, so a high `setMaxCallDepth` is safe there. Measured with a Release build the VM is not faster yet: `fib` takes about the same time, and array-heavy code is much faster.
+Programs run on the bytecode VM. Set `MNI_BACKEND=tree` (or pass `Interpreter::Options` with `Backend::Tree`) to use the tree-walking evaluator instead; it is kept as a reference and gives the same values, output and error messages, apart from the cases in [docs/vm-divergences.md](docs/vm-divergences.md). VM calls do not use the C++ stack, so a high `setMaxCallDepth` is safe, while the tree-walker is limited by the thread's stack (on Windows, 1 MB). In a Release build the VM runs `fib(30)` in about 0.14s, against 0.24s for the tree-walker.
 
 `Interpreter::setLimits` stops runaway programs with a `mni::LimitError`: a tick budget (one tick per loop iteration or user function call), a timeout, or a cancel flag you can set from another thread. Native calls such as a shell command or an HTTP request are not interrupted while they run.
 

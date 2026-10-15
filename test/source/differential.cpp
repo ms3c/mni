@@ -114,8 +114,8 @@ TEST_CASE("backend selection") {
   CHECK(Interpreter(out, in, {Interpreter::Backend::Tree}).backend() == Interpreter::Backend::Tree);
   const auto vm = Interpreter(out, in, {Interpreter::Backend::Vm}).backend();
   CHECK(vm == (Interpreter::vmAvailable() ? Interpreter::Backend::Vm : Interpreter::Backend::Tree));
-  // the default follows MNI_BACKEND, which the "on vm" registration sets
-  const bool wantsVm = environmentVariable("MNI_BACKEND") == "vm" && Interpreter::vmAvailable();
+  // the default is the VM unless MNI_BACKEND=tree, which the "on tree" registration sets
+  const bool wantsVm = environmentVariable("MNI_BACKEND") != "tree" && Interpreter::vmAvailable();
   CHECK(Interpreter(out, in).backend()
         == (wantsVm ? Interpreter::Backend::Vm : Interpreter::Backend::Tree));
 }
