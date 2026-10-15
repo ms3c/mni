@@ -31,6 +31,13 @@ add_executable(${PROJECT_NAME} ${sources})
 # the tests also exercise a few internal headers (source/checked_arithmetic.h)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../source)
 
+# test/corpus holds the programs and expected output for differential.cpp; bench/ is also compiled
+# by vm_compiler.cpp
+target_compile_definitions(
+  ${PROJECT_NAME} PRIVATE MNI_CORPUS_DIR="${CMAKE_CURRENT_LIST_DIR}/corpus"
+                          MNI_BENCH_DIR="${CMAKE_CURRENT_LIST_DIR}/../bench"
+)
+
 find_package(Threads REQUIRED)
 target_link_libraries(${PROJECT_NAME} doctest::doctest mni::mni Threads::Threads)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 20)
@@ -55,6 +62,20 @@ enable_testing()
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(${PROJECT_NAME})
+
+# The same tests again with the bytecode VM selected (a no-op until the VM exists: MNI_BACKEND=vm
+# falls back to the tree-walker in a build without it). doctest names its generated files from the
+# test spec and extra arguments only, so EXTRA_ARGS also keeps the two registrations apart.
+doctest_discover_tests(
+  ${PROJECT_NAME}
+  TEST_SUFFIX
+  " on vm"
+  EXTRA_ARGS
+  --no-colors
+  PROPERTIES
+  ENVIRONMENT
+  "MNI_BACKEND=vm"
+)
 
 # ---- code coverage ----
 

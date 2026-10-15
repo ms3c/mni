@@ -1,0 +1,10 @@
+[1, [2, 3], "x"] 2 x tupu 3 x tupu
+["first", [2, 3], "last"]
+["first", [2, 3], "last", "shared"] kweli
+["first", [2, 3], "last", "shared", 9] ["first", [2, 3], "last", "shared"]
+[1, 4, 9] [2, 4]
+int float bool string tupu kweli kweli sikweli
+[1, 2]
+{"b": 10, "a": 2, "c": 3}
+{"x": 3, "y": 2}
+value

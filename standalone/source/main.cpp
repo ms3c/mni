@@ -16,6 +16,7 @@ namespace {
         "  nuru                       Kuanza programu ya Nuru (REPL)\n"
         "  nuru jinaLaFile.nr         Kuendesha faili la Nuru\n"
         "  nuru --tokens file.nr      Onyesha tokens za faili\n"
+        "  nuru --disasm file.nr      Onyesha bytecode ya faili\n"
         "  nuru --ast file.nr         Onyesha AST ya faili\n"
         "  nuru --toleo               Kufahamu toleo la Nuru\n";
 
@@ -82,7 +83,8 @@ auto main(int argc, char** argv) -> int {
 
   const bool wantTokens = argc == 3 && arg == "--tokens";
   const bool wantAst = argc == 3 && arg == "--ast";
-  if (argc > 3 || (argc == 3 && !wantTokens && !wantAst)) {
+  const bool wantDisasm = argc == 3 && arg == "--disasm";
+  if (argc > 3 || (argc == 3 && !wantTokens && !wantAst && !wantDisasm)) {
     std::cerr << kHelp;
     return 1;
   }
@@ -92,6 +94,15 @@ auto main(int argc, char** argv) -> int {
 
   if (wantTokens) return printTokens(source);
 
+  if (wantDisasm) {
+    try {
+      std::cout << mni::Interpreter::disassembleSource(source);
+    } catch (const mni::SyntaxError& e) {
+      std::cerr << e.what() << "\n";
+      return 1;
+    }
+    return 0;
+  }
   if (wantAst) {
     mni::Program program;
     if (!parse(source, program)) return 1;

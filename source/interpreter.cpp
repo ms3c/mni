@@ -2,8 +2,10 @@
 #include <mni/parser.h>
 
 #include <cmath>
+#include <cstdlib>
 
 #include "stack.h"
+#include "vm.h"
 
 namespace mni {
 
@@ -48,8 +50,33 @@ namespace mni {
   SyntaxError::SyntaxError(std::vector<std::string> errs)
       : std::runtime_error(joinLines(errs)), errors(std::move(errs)) {}
 
-  Interpreter::Interpreter(std::ostream& out, std::istream& in)
+  namespace {
+    std::string environmentVariable(const char* name) {
+#ifdef _WIN32
+      char* buffer = nullptr;
+      size_t size = 0;
+      if (_dupenv_s(&buffer, &size, name) != 0 || !buffer) return {};
+      std::string value(buffer);
+      std::free(buffer);
+      return value;
+#else
+      const char* value = std::getenv(name);
+      return value ? value : "";
+#endif
+    }
+  }  // namespace
+
+  bool Interpreter::vmAvailable() { return true; }
+
+  Interpreter::Interpreter(std::ostream& out, std::istream& in) : Interpreter(out, in, Options{}) {}
+
+  Interpreter::Interpreter(std::ostream& out, std::istream& in, Options options)
       : out_(out), in_(in), globals_(std::make_shared<Environment>()), env_(globals_.get()) {
+    Backend wanted = options.backend;
+    if (wanted == Backend::Default)
+      wanted = environmentVariable("MNI_BACKEND") == "vm" ? Backend::Vm : Backend::Tree;
+    backend_ = wanted == Backend::Vm && vmAvailable() ? Backend::Vm : Backend::Tree;
+    if (backend_ == Backend::Vm) vm_ = std::make_unique<Vm>(*this);
     installBuiltins();
   }
 
@@ -61,14 +88,48 @@ namespace mni {
     if (!parser.errors().empty()) throw SyntaxError(parser.errors());
     programs_.push_back(std::move(program));
 
+    startRun();
     try {
+      if (vm_) return vm_->runProgram(*programs_.back());
       return execProgram(*programs_.back());
     } catch (...) {
       flow_ = Flow::None;
       env_ = globals_.get();
       callDepth_ = 0;
+      if (vm_) vm_->reset();
       throw;
     }
+  }
+
+  // ---- limits ----
+
+  void Interpreter::startRun() {
+    ticksLeft_ = limits_.maxTicks ? limits_.maxTicks : UINT64_MAX;
+    hasDeadline_ = limits_.timeout.count() > 0;
+    if (hasDeadline_) deadline_ = std::chrono::steady_clock::now() + limits_.timeout;
+    fuel_ = 0;  // the first tick asks for fuel, which is when the limits are first checked
+  }
+
+  void Interpreter::checkInterrupt(int line) {
+    if (limits_.cancel && limits_.cancel->load(std::memory_order_relaxed))
+      throw LimitError(LimitError::Kind::Cancelled, line, "Programu imesimamishwa");
+    if (hasDeadline_ && std::chrono::steady_clock::now() >= deadline_)
+      throw LimitError(
+          LimitError::Kind::Timeout, line,
+          "Muda wa programu umeisha (kikomo: " + std::to_string(limits_.timeout.count()) + " ms)");
+  }
+
+  // Called when the fuel runs out: check the limits, then hand out the next batch of ticks.
+  void Interpreter::refuel(int line) {
+    checkInterrupt(line);
+    if (ticksLeft_ == 0)
+      throw LimitError(
+          LimitError::Kind::Ticks, line,
+          "Programu imezidi kikomo cha hatua (" + std::to_string(limits_.maxTicks) + ")");
+    constexpr uint64_t kBatch = 1024;
+    const uint64_t grant = ticksLeft_ < kBatch ? ticksLeft_ : kBatch;
+    ticksLeft_ -= grant;
+    fuel_ = static_cast<int64_t>(grant) - 1;  // this tick uses the first one
   }
 
   // Runs the statements in the current scope. Returns the last statement's value.
@@ -396,6 +457,7 @@ namespace mni {
       }
       if (flow_ == Flow::Continue) flow_ = Flow::None;
       if (flow_ != Flow::None) return Value();
+      tick(e->token.line);  // another iteration follows
     }
   }
 
@@ -412,7 +474,9 @@ namespace mni {
         return false;
       }
       if (flow_ == Flow::Continue) flow_ = Flow::None;
-      return flow_ == Flow::None;
+      if (flow_ != Flow::None) return false;
+      tick(e->token.line);
+      return true;
     };
 
     switch (iterable.type()) {
@@ -470,7 +534,7 @@ namespace mni {
       // Evaluate the arguments straight into the callee's new scope.
       const FunctionLiteral* node = callee.asFunction().node;
       const size_t paramCount = node->parameters.size();
-      auto local = std::make_shared<Environment>(callee.asFunction().closure, paramCount + 4);
+      auto local = Environment::make(callee.asFunction().closure, paramCount + 4);
       for (size_t i = 0; i < e->arguments.size(); ++i) {
         NURU_EVAL(v, e->arguments[i].get())
         if (i < paramCount) local->define(node->parameters[i].symbol, std::move(v));
@@ -511,6 +575,8 @@ namespace mni {
 
   Value Interpreter::callFunction(const Value& callee, std::vector<Value> args, int line,
                                   NamedArgs named) {
+    if (vm_ && callee.type() == Value::Type::Function)
+      return vm_->callFunction(callee, std::move(args), line, std::move(named));
     switch (callee.type()) {
       case Value::Type::Function:
         return callUser(callee, args, named, line);
@@ -535,7 +601,7 @@ namespace mni {
                                 + " tu, lakini umetoa " + std::to_string(args.size()));
 
     // positional arguments first, then keyword arguments by parameter name
-    auto local = std::make_shared<Environment>(fn.closure, paramCount + 4);
+    auto local = Environment::make(fn.closure, paramCount + 4);
     for (size_t i = 0; i < args.size(); ++i)
       local->define(node->parameters[i].symbol, std::move(args[i]));
     for (auto& [name, value] : named) {
@@ -559,6 +625,7 @@ namespace mni {
     if (callDepth_ >= maxCallDepth_
         || ((callDepth_ & 15) == 0 && stackBytesRemaining() < kMinStackBytes))
       throw NuruError(line, "Kazi zimejiita mara nyingi mno (recursion imezidi kikomo)");
+    tick(line);
 
     struct Restore {
       Environment*& env;

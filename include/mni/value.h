@@ -18,6 +18,7 @@ namespace mni {
   struct Function;
   struct Builtin;
   struct Package;
+  struct Proto;
 
   class Value;
   /** Keyword arguments of a call (`f(a, name = value)`), in source order. */
@@ -140,6 +141,7 @@ namespace mni {
   struct Function {
     const FunctionLiteral* node;  // owned by the Interpreter's retained programs
     std::shared_ptr<Environment> closure;
+    const Proto* proto = nullptr;  // compiled body; only set when the bytecode VM made the function
   };
 
   struct Builtin {

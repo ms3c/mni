@@ -4,6 +4,9 @@
 #include <mni/environment.h>
 #include <mni/value.h>
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -27,13 +30,43 @@ namespace mni {
     std::vector<std::string> errors;
   };
 
+  /** Limits on how long a program may run. Each applies to every run() call separately. */
+  struct ExecLimits {
+    /** Ticks allowed: one per completed loop iteration and one per user function call. 0 = no
+     * limit. */
+    uint64_t maxTicks = 0;
+    /** Wall-clock time allowed. 0 = no limit. */
+    std::chrono::milliseconds timeout{0};
+    /** If set, the program stops soon after this becomes true (it may be set from another thread).
+     */
+    const std::atomic<bool>* cancel = nullptr;
+  };
+
+  /** A program was stopped because it hit one of its ExecLimits. */
+  class LimitError : public NuruError {
+  public:
+    enum class Kind { Ticks, Timeout, Cancelled };
+    LimitError(Kind kind, int line, const std::string& message)
+        : NuruError(line, message), kind_(kind) {}
+    Kind kind() const { return kind_; }
+
+  private:
+    Kind kind_;
+  };
+
   /** Thrown by toka()/exit() to leave the program. */
   struct ExitRequest {
     int code = 0;
   };
 
+  class Vm;
+
   /**
-   * @brief Tree-walking evaluator
+   * @brief The Nuru interpreter, with two backends
+   *
+   * The tree-walking evaluator is the default. The bytecode VM (Backend::Vm, or MNI_BACKEND=vm)
+   * gives the same results; it keeps Nuru calls on the heap and is described in
+   * docs/vm-divergences.md.
    *
    * Scoping: functions create a scope; blocks (kama, wakati, kwa, ...) do not. `x = v` updates the
    * nearest existing `x` or creates it in the current scope; `fanya x = v` always creates it in the
@@ -42,7 +75,19 @@ namespace mni {
    */
   class Interpreter {
   public:
+    /** The engine that runs programs. */
+    enum class Backend {
+      Default,  // the MNI_BACKEND environment variable ("vm" or "tree"); tree if unset
+      Tree,     // the tree-walking evaluator
+      Vm        // the bytecode VM
+    };
+
+    struct Options {
+      Backend backend = Backend::Default;
+    };
+
     explicit Interpreter(std::ostream& out = std::cout, std::istream& in = std::cin);
+    Interpreter(std::ostream& out, std::istream& in, Options options);
     ~Interpreter();
     Interpreter(const Interpreter&) = delete;
     Interpreter& operator=(const Interpreter&) = delete;
@@ -66,11 +111,43 @@ namespace mni {
     std::ostream& out() { return out_; }
     std::istream& in() { return in_; }
 
+    /** The engine in use: Tree or Vm, never Default. */
+    Backend backend() const { return backend_; }
+
+    /**
+     * Compiles `source` to bytecode and returns a readable listing (for debugging and tests).
+     * @throws SyntaxError
+     */
+    static std::string disassembleSource(const std::string& source);
+
+    /** False in builds without the bytecode VM, where requesting it falls back to the tree. */
+    static bool vmAvailable();
+
     /** Maximum nesting of Nuru function calls before "recursion too deep" (default 1000). */
     void setMaxCallDepth(int depth) { maxCallDepth_ = depth; }
 
+    /**
+     * Limits for the runs that follow. A program that hits one is stopped with a LimitError, and
+     * the interpreter can be used again. Natives such as a shell command or an HTTP request are
+     * not interrupted while they run; those that can wait (muda.lala) check for you.
+     */
+    void setLimits(const ExecLimits& limits) { limits_ = limits; }
+    const ExecLimits& limits() const { return limits_; }
+
+    /** For long-running native code: throws LimitError if the program was cancelled or timed out.
+     */
+    void checkInterrupt(int line = 0);
+
   private:
+    friend class Vm;
     enum class Flow { None, Break, Continue, Return };
+
+    // Counts a tick (see ExecLimits) and, every so often, checks the limits.
+    void tick(int line) {
+      if (--fuel_ < 0) refuel(line);
+    }
+    void refuel(int line);
+    void startRun();
 
     Value exec(const Statement* stmt);
     Value execBlock(const BlockStatement* block);
@@ -124,6 +201,8 @@ namespace mni {
     Value callMethod(const Value& self, const std::string& name, std::vector<Value>& args,
                      NamedArgs& named, int line);
 
+    Backend backend_ = Backend::Tree;
+    std::unique_ptr<Vm> vm_;  // only when backend_ == Vm
     std::ostream& out_;
     std::istream& in_;
     std::shared_ptr<Environment> globals_;
@@ -133,6 +212,11 @@ namespace mni {
     Value returnValue_;
     int callDepth_ = 0;
     int maxCallDepth_ = 1000;
+    ExecLimits limits_;
+    int64_t fuel_ = 0;                 // ticks left before the next limit check
+    uint64_t ticksLeft_ = UINT64_MAX;  // ticks not yet handed out as fuel
+    std::chrono::steady_clock::time_point deadline_;
+    bool hasDeadline_ = false;
     std::unordered_map<std::string, Value>
         modules_;                       // loaded packages, by native name or file path
     std::vector<std::string> loading_;  // files being imported (cycle detection)

@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "native.h"
+#include "vm.h"
 
 namespace mni {
 
@@ -121,7 +122,11 @@ namespace mni {
     Restore restore{*this, env_, currentDir_};
     env_ = moduleEnv.get();
     currentDir_ = std::filesystem::path(path).parent_path().string();
-    execProgram(prog);
+    if (vm_) {
+      vm_->runModule(prog, moduleEnv);
+    } else {
+      execProgram(prog);
+    }
 
     Value* pkg = moduleEnv->lookupOwn(packageName);
     if (!pkg || pkg->type() != Value::Type::Package)

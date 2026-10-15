@@ -365,7 +365,8 @@ namespace {
     std::ostringstream os;
     std::istringstream is;
     Interpreter interp(os, is);
-    interp.setMaxCallDepth(1'000'000);  // only the stack check can stop this
+    interp.setMaxCallDepth(50'000);  // more than 1 MB of C++ stack holds, so the tree-walker's
+                                     // stack check must stop it
     try {
       interp.run("f = unda(n) { rudisha f(n + 1) } f(0)");
       *static_cast<std::string*>(result) = "<no error>";

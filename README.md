@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ms3c/mni/actions/workflows/ci.yml/badge.svg)](https://github.com/ms3c/mni/actions/workflows/ci.yml)
 
-`mni` is an interpreter for [Nuru](https://github.com/NuruProgramming/Nuru), the programming language with Swahili keywords. It is a tree-walking interpreter written in C++20: a lexer, a Pratt parser, and an evaluator, with the standalone executable `nuru`.
+`mni` is an interpreter for [Nuru](https://github.com/NuruProgramming/Nuru), the programming language with Swahili keywords. It is written in C++20: a lexer, a Pratt parser, a tree-walking evaluator and an optional bytecode VM, with the standalone executable `nuru`.
 
 > **Status:** work in progress. The language core, packages and imports, and the `hisabati`, `jsoni`, `muda`, `mtandao` (HTTP) and `os` modules work. See [What's missing](#whats-missing).
 
@@ -49,6 +49,7 @@ nuru                     start the REPL
 nuru file.nr             run a file (.nr or .sw)
 nuru --ast file.nr       print the parsed program instead of running it
 nuru --tokens file.nr    print the tokens
+nuru --disasm file.nr    print the bytecode
 nuru --toleo             print the version        (-v, --version)
 nuru --msaada            print help               (-h, --help)
 ```
@@ -195,6 +196,12 @@ cmake --build build/test
 ctest --test-dir build/test --output-on-failure
 ```
 
+## Backends and limits
+
+The tree-walking evaluator is the default. Set `MNI_BACKEND=vm` (or pass `Interpreter::Options` with `Backend::Vm`) to run on the bytecode VM instead. It gives the same values, output and error messages, apart from the cases in [docs/vm-divergences.md](docs/vm-divergences.md). VM calls do not use the C++ stack, so a high `setMaxCallDepth` is safe there. Measured with a Release build the VM is not faster yet: `fib` takes about the same time, and array-heavy code is much faster.
+
+`Interpreter::setLimits` stops runaway programs with a `mni::LimitError`: a tick budget (one tick per loop iteration or user function call), a timeout, or a cancel flag you can set from another thread. Native calls such as a shell command or an HTTP request are not interrupted while they run.
+
 ## Using it as a library
 
 ```cpp
@@ -214,6 +221,7 @@ include/mni/   public headers: token, lexer, ast, parser, symbol, value, environ
 source/
   lexer, parser, ast, token         the frontend
   value, symbol, environment        values, interned names, variable scopes
+  compiler, bytecode, verify, disasm, vm   the optional bytecode backend
   interpreter, operators, stack     the evaluator (operators.cpp: arithmetic, comparison, indexing;
                                     stack.cpp: turns runaway recursion into an error)
   imports.cpp                       pakeji and tumia: package scopes, module and file loading

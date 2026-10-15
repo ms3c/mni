@@ -1,0 +1,12 @@
+i = 1 x = 11
+y = 1
+i = 3 x = 11
+y = 1
+i = 4 x = 11
+after loop 4
+early
+t [1, 10]
+g done
+n 1 100
+n 2 100
+3
